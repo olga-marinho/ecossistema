@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="plants" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 399.36 222.33">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: none;
+      }
+
+      .cls-2 {
+        fill: url(#Gradiente_sem_nome_177);
+      }
+
+      .cls-3 {
+        fill: url(#Gradiente_sem_nome_104);
+      }
+
+      .cls-4 {
+        fill: url(#Gradiente_sem_nome_106);
+      }
+
+      .cls-5 {
+        fill: url(#Gradiente_sem_nome_183);
+      }
+
+      .cls-6 {
+        clip-path: url(#clippath);
+      }
+    </style>
+    <linearGradient id="Gradiente_sem_nome_106" data-name="Gradiente sem nome 106" x1="199.68" y1="222.33" x2="199.68" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#a00000"/>
+      <stop offset=".3" stop-color="red"/>
+    </linearGradient>
+    <clipPath id="clippath">
+      <path class="cls-1" d="M399.32,178.5c.1-1.6.05-3.24-.18-4.9C385.63,75.53,301.49,0,199.7,0S13.55,75.74.21,174.01c-.22,1.6-.26,3.19-.17,4.74-.06,1.01-.06,2.01,0,3-.06,1.01-.06,2.01,0,3-.06,1.01-.06,2.01,0,3-.06,1.01-.06,2.01,0,3-.06,1.01-.06,2.01,0,3-.06,1.01-.06,2.01,0,3-.87,13.75,10.21,25.58,24.23,25.58h350.84c14.13,0,25.03-11.97,24.19-25.82.06-.99.06-1.99,0-3,.06-.99.06-1.99,0-3,.06-.99.06-1.99,0-3,.06-.99.06-1.99,0-3,.06-.99.06-1.99,0-3,.06-.99.06-1.99,0-3Z"/>
+    </clipPath>
+    <linearGradient id="Gradiente_sem_nome_104" data-name="Gradiente sem nome 104" x1="119.36" y1="67.67" x2="119.36" y2="2.08" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#777"/>
+      <stop offset=".56" stop-color="#bbb"/>
+    </linearGradient>
+    <linearGradient id="Gradiente_sem_nome_177" data-name="Gradiente sem nome 177" x1="306.78" y1="178.86" x2="306.78" y2="32.8" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#888"/>
+      <stop offset=".56" stop-color="#ccc"/>
+    </linearGradient>
+    <linearGradient id="Gradiente_sem_nome_183" data-name="Gradiente sem nome 183" x1="70.75" y1="247.35" x2="70.75" y2="152.86" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#888"/>
+      <stop offset=".56" stop-color="#ccc"/>
+    </linearGradient>
+  </defs>
+  <path class="cls-4" d="M399.32,178.5c.1-1.6.05-3.24-.18-4.9C385.63,75.53,301.49,0,199.7,0S13.55,75.74.21,174.01c-.22,1.6-.26,3.19-.17,4.74-.06,1.01-.06,2.01,0,3-.06,1.01-.06,2.01,0,3-.06,1.01-.06,2.01,0,3-.06,1.01-.06,2.01,0,3-.06,1.01-.06,2.01,0,3-.06,1.01-.06,2.01,0,3-.87,13.75,10.21,25.58,24.23,25.58h350.84c14.13,0,25.03-11.97,24.19-25.82.06-.99.06-1.99,0-3,.06-.99.06-1.99,0-3,.06-.99.06-1.99,0-3,.06-.99.06-1.99,0-3,.06-.99.06-1.99,0-3,.06-.99.06-1.99,0-3Z"/>
+  <g class="cls-6">
+    <circle class="cls-3" cx="119.36" cy="34.88" r="32.79"/>
+    <circle class="cls-2" cx="306.78" cy="105.83" r="73.03"/>
+    <circle class="cls-5" cx="70.75" cy="200.11" r="47.25"/>
+  </g>
+</svg>
