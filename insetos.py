@@ -15,7 +15,6 @@ ESCALA_VW = {
     "inseto_joaninha":  0.02964,
 }
 
-# ALTERAR FRAMES
 ANIM_DELAY = 6
 
 

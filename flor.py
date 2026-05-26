@@ -179,8 +179,6 @@ class Flor:
     def _renderizar_textura_caule(self, progresso: float) -> arcade.Texture:
         """Gera a imagem aplicando um offset negativo para esconder o ponto inicial do topo."""
         try:
-            # O truque: criamos um traço contínuo e jogamos ele para fora com offset negativo. 
-            # À medida que cresce, a linha desliza de baixo para cima sem criar artefatos no topo!
             dash_array_str = f'stroke-dasharray="{self.comprimento_total:.3f} {self.comprimento_total:.3f}"'
             offset_val = -self.comprimento_total * (1.0 - progresso)
             dash_offset_str = f'stroke-dashoffset="{offset_val:.3f}"'
@@ -221,9 +219,8 @@ class Flor:
         self.x_alvo = float(x_alvo)
         self.x += (self.x_alvo - self.x) * 0.12
 
-        # --- ANIMAÇÃO MAIS RÁPIDA ---
         if self.progresso_crescimento < 1.0:
-            velocidade_desenho = 0.08  # Aumentado de 0.04 para 0.08 (Cresce bem rápido agora!)
+            velocidade_desenho = 0.08
             self.progresso_crescimento += velocidade_desenho
             
             if self.progresso_crescimento >= 1.0:
@@ -261,11 +258,9 @@ class Flor:
             sprite_c.angle = angle_graus
             arcade.draw_sprite(sprite_c)
 
-        # O topo onde a flor nasce só será alcançado visualmente quando o progresso for 1.0
         topo_x = self.x - self.altura_caule * sin_a
         topo_y = self.altura_caule * cos_a
 
-        # --- APARIÇÃO DA FLOR ---
         if self.textura_flor and self.progresso_crescimento >= 1.0:
             proporcao = self.textura_flor.height / self.textura_flor.width
             larg_final = self.largura_janela * ESCALA_FLOR

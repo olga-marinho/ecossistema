@@ -26,10 +26,6 @@ def lerp(a: float, b: float, t: float) -> float:
 
 
 def _obter_ecra_maior() -> tuple[int, int, int, int]:
-    """
-    Devolve (largura, altura, x, y) do monitor com maior área.
-    Assim funciona mesmo quando o MacBook está ligado a um ecrã externo maior.
-    """
     display = pyglet.display.get_display()
     screens = display.get_screens()
 
@@ -44,7 +40,6 @@ class Ecossistema(arcade.Window):
         diretorio = os.path.dirname(os.path.abspath(__file__))
         font_path = os.path.join(diretorio, "assets", "font", "BasteA-Medium.otf")
 
-        # Regista o ficheiro da fonte (seguro antes da janela)
         if os.path.exists(font_path):
             pyglet_font.add_file(font_path)
 
@@ -59,7 +54,6 @@ class Ecossistema(arcade.Window):
                 resizable=False,
                 style=pyglet.window.Window.WINDOW_STYLE_BORDERLESS,
             )
-            # Posiciona no canto superior esquerdo do ecrã maior
             self.set_location(ecra_x, ecra_y)
         else:
             super().__init__(largura_ecra, altura_ecra, FRASE, fullscreen=True)
@@ -120,6 +114,9 @@ class Ecossistema(arcade.Window):
 
         for flor, p in zip(self.flores, pessoas):
             flor.atualizar(p.x * self.largura)
+            
+        for planta in self.plantas:
+            planta.atualizar()
 
         for inseto in self.insetos:
             inseto.update()
