@@ -299,19 +299,22 @@ class Planta:
 
             arcade.draw_sprite(sprite_f)
 
-
 def criar_plantas(
     altura_janela: float,
     largura_janela: float,
-    estado: str = "padrao"
+    estado: str = "padrao",
+    num_plantas: int = None,
 ) -> list[Planta]:
+    if num_plantas is None:
+        num_plantas = Planta.NUM_PLANTAS
+
     margem = largura_janela * 0.05
     zona = largura_janela - 2 * margem
     plantas = []
 
-    for i in range(Planta.NUM_PLANTAS):
-        x_min = margem + i * (zona / Planta.NUM_PLANTAS)
-        x_max = margem + (i + 1) * (zona / Planta.NUM_PLANTAS)
+    for i in range(num_plantas):
+        x_min = margem + i * (zona / num_plantas)
+        x_max = margem + (i + 1) * (zona / num_plantas)
         x = random.uniform(x_min, x_max)
 
         plantas.append(

@@ -3,7 +3,6 @@ import random
 import os
 import math
 
-
 TERRESTRES = ("formiga", "caracol", "minhoca")
 
 ESCALA_VW = {
@@ -36,6 +35,9 @@ class Inseto(arcade.Sprite):
 
         self.direcao   = random.choice([-1, 1]) if not dados else (1 if dados[2] > 0 else -1)
         self.velocidade = self._definir_velocidade() * self.direcao
+        
+        self.marcado_para_sair = False
+        self.is_extra_ativo = False
 
         if dados:
             self.center_x, y_antigo, _, _ = dados
@@ -71,9 +73,15 @@ class Inseto(arcade.Sprite):
             self.anim_timer  = 0
 
         if self.direcao == 1 and self.center_x > self.largura_janela + self.width:
-            self.center_x = -self.width
+            if getattr(self, "marcado_para_sair", False):
+                self.kill() 
+            else:
+                self.center_x = -self.width
         elif self.direcao == -1 and self.center_x < -self.width:
-            self.center_x = self.largura_janela + self.width
+            if getattr(self, "marcado_para_sair", False):
+                self.kill()
+            else:
+                self.center_x = self.largura_janela + self.width
 
     def _aplicar_movimento_especifico(self):
         pass
@@ -117,29 +125,53 @@ class InsetoVoador(Inseto):
         self.center_y = self.base_y + (math.sin(self.angulo) * amplitude)
 
 
-def carregar_insetos(altura, largura, tipo="padrao", dados=None):
-    config = [
-        {"prefixo": "inseto_pirilampo", "frames": 3},
-        {"prefixo": "inseto_caracol",   "frames": 4},
-        {"prefixo": "inseto_minhoca",   "frames": 4},
-    ] if tipo == "noturno" else [
-        {"prefixo": "inseto_abelha",    "frames": 3},
-        {"prefixo": "inseto_formiga",   "frames": 3},
-        {"prefixo": "inseto_joaninha",  "frames": 4},
-    ]
+def obter_configs_estado(estado):
+    """Devolve a lista de configurações possíveis de insetos de acordo com o estado."""
+    if estado == "noturno":
+        return [
+            {"prefixo": "inseto_pirilampo", "frames": 3},
+            {"prefixo": "inseto_caracol",   "frames": 4},
+            {"prefixo": "inseto_minhoca",   "frames": 4},
+        ]
+    else:
+        return [
+            {"prefixo": "inseto_abelha",    "frames": 3},
+            {"prefixo": "inseto_formiga",   "frames": 3},
+            {"prefixo": "inseto_joaninha",  "frames": 4},
+        ]
 
-    lista        = arcade.SpriteList()
-    caminho_base = os.path.join(os.path.dirname(__file__), "assets", "imgs")
+def gerar_inseto_por_config(item, altura, largura, dados=None, marcado_para_sair=False):
+    """Instancia um único inseto com base numa configuração específica."""
+    prefixo = item["prefixo"]
+    escala_vw = ESCALA_VW.get(prefixo, 0.02)
+    e_terrestre = any(t in prefixo.lower() for t in TERRESTRES)
+    classe = InsetoTerrestre if e_terrestre else InsetoVoador
+    
+    ins = classe(prefixo, item["frames"], altura, largura, escala_vw, dados)
+    ins.marcado_para_sair = marcado_para_sair
+    return ins
 
-    for i, item in enumerate(config):
-        dado     = dados[i] if dados and i < len(dados) else None
-        prefixo  = item["prefixo"]
-        if not os.path.exists(os.path.join(caminho_base, f"{prefixo}_01.png")):
-            continue
-
-        escala_vw  = ESCALA_VW.get(prefixo, 0.02)
-        e_terrestre = any(t in prefixo.lower() for t in TERRESTRES)
-        classe      = InsetoTerrestre if e_terrestre else InsetoVoador
-        lista.append(classe(prefixo, item["frames"], altura, largura, escala_vw, dado))
-
+def carregar_insetos_iniciais(altura, largura, estado):
+    """Carrega apenas os 3 insetos base que estão sempre no ecossistema."""
+    lista = arcade.SpriteList()
+    configs = obter_configs_estado(estado)
+    for item in configs:
+        lista.append(gerar_inseto_por_config(item, altura, largura))
     return lista
+
+def converter_insetos_estado(insetos_atuais, altura, largura, novo_estado):
+    """Converte TODOS os insetos atuais (base e extras) para o novo formato de dia/noite, mantendo posições."""
+    nova_lista = arcade.SpriteList()
+    configs = obter_configs_estado(novo_estado)
+    
+    for i, inseto_velho in enumerate(insetos_atuais):
+        item = configs[i % len(configs)] 
+        dados = (inseto_velho.center_x, inseto_velho.center_y, inseto_velho.direcao, inseto_velho.velocidade)
+        
+        novo_ins = gerar_inseto_por_config(
+            item, altura, largura, dados, getattr(inseto_velho, "marcado_para_sair", False)
+        )
+        novo_ins.is_extra_ativo = getattr(inseto_velho, "is_extra_ativo", False)
+        nova_lista.append(novo_ins)
+        
+    return nova_lista
