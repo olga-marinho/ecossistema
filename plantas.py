@@ -44,10 +44,6 @@ def _gerar_dados_planta(
     altura_janela: float,
     stroke_px: float
 ):
-    """
-    Gera a estrutura e a geometria fixa do caule uma única vez, 
-    calculando também o comprimento total exato de toda a linha (incluindo curvas).
-    """
     largura_util = largura_janela * LARGURA_MAX_CAULE
     margin = stroke_px
 
@@ -157,6 +153,10 @@ class Planta:
         self.stroke = largura_janela * LARGURA_STROKE_FATOR
         self.progresso_crescimento = 0.0
 
+        self.a_desaparecer = False
+        self.folha_visivel = True
+        self.removida = False
+
         if self.estado == "noturno":
             self.cor_base = COR_CAULE_BASE_NOTURNO
             self.cor_topo = COR_CAULE_TOPO_NOTURNO
@@ -174,8 +174,10 @@ class Planta:
         self.folha_esquerda = random.random() < 0.5
         self.textura_folha = self._carregar_folha()
 
+    def iniciar_desaparecimento(self):
+        self.a_desaparecer = True
+
     def _renderizar_textura_planta(self, progresso: float) -> arcade.Texture:
-        """Gera a imagem aplicando um offset negativo para animar de baixo para cima."""
         try:
             dash_array_str = f'stroke-dasharray="{self.comprimento_total:.3f} {self.comprimento_total:.3f}"'
             offset_val = -self.comprimento_total * (1.0 - progresso)
@@ -235,15 +237,26 @@ class Planta:
         return _carregar_textura_folha(caminho, flip=self.folha_esquerda)
 
     def atualizar(self):
-        """Atualiza a lógica de crescimento a cada frame."""
-        if self.progresso_crescimento < 1.0:
-            velocidade_desenho = 0.08  
-            self.progresso_crescimento += velocidade_desenho
-            
-            if self.progresso_crescimento >= 1.0:
-                self.progresso_crescimento = 1.0
-            
-            self.textura = self._renderizar_textura_planta(self.progresso_crescimento)
+        velocidade_desenho = 0.08  
+        
+        if not self.a_desaparecer:
+            if self.progresso_crescimento < 1.0:
+                self.progresso_crescimento += velocidade_desenho
+                if self.progresso_crescimento >= 1.0:
+                    self.progresso_crescimento = 1.0
+                
+                self.textura = self._renderizar_textura_planta(self.progresso_crescimento)
+        else:
+            if self.folha_visivel:
+                self.folha_visivel = False
+            else:
+                self.progresso_crescimento -= velocidade_desenho
+                if self.progresso_crescimento <= 0.0:
+                    self.progresso_crescimento = 0.0
+                    self.removida = True
+                
+                self.textura = self._renderizar_textura_planta(self.progresso_crescimento)
+
 
     def desenhar(self):
         if not self.textura:
@@ -267,7 +280,7 @@ class Planta:
 
         arcade.draw_sprite(sprite_c)
 
-        if self.textura_folha and self.progresso_crescimento >= 1.0:
+        if self.textura_folha and self.progresso_crescimento >= 1.0 and self.folha_visivel:
             topo_x = self.x
             topo_y = self.altura_caule
 
@@ -298,6 +311,7 @@ class Planta:
                     sprite_f.center_x = topo_x + larg_folha / 2 + margem_px
 
             arcade.draw_sprite(sprite_f)
+
 
 def criar_plantas(
     altura_janela: float,

@@ -48,10 +48,6 @@ def _carregar_svg_com_cor(svg_path: str, cor_petala: str, largura_px: int = 300)
 
 
 def _gerar_dados_caule(altura_caule, largura_janela, altura_janela, stroke_px):
-    """
-    Gera a estrutura e a geometria fixa do caule uma única vez, 
-    calculando também o comprimento total exato de toda a linha (incluindo curvas).
-    """
     largura_util = largura_janela * LARGURA_MAX_CAULE
     margin = stroke_px
     vb_w = largura_util + stroke_px * 2

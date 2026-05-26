@@ -126,7 +126,6 @@ class InsetoVoador(Inseto):
 
 
 def obter_configs_estado(estado):
-    """Devolve a lista de configurações possíveis de insetos de acordo com o estado."""
     if estado == "noturno":
         return [
             {"prefixo": "inseto_pirilampo", "frames": 3},
@@ -141,7 +140,6 @@ def obter_configs_estado(estado):
         ]
 
 def gerar_inseto_por_config(item, altura, largura, dados=None, marcado_para_sair=False):
-    """Instancia um único inseto com base numa configuração específica."""
     prefixo = item["prefixo"]
     escala_vw = ESCALA_VW.get(prefixo, 0.02)
     e_terrestre = any(t in prefixo.lower() for t in TERRESTRES)
@@ -152,7 +150,6 @@ def gerar_inseto_por_config(item, altura, largura, dados=None, marcado_para_sair
     return ins
 
 def carregar_insetos_iniciais(altura, largura, estado):
-    """Carrega apenas os 3 insetos base que estão sempre no ecossistema."""
     lista = arcade.SpriteList()
     configs = obter_configs_estado(estado)
     for item in configs:
@@ -160,7 +157,6 @@ def carregar_insetos_iniciais(altura, largura, estado):
     return lista
 
 def converter_insetos_estado(insetos_atuais, altura, largura, novo_estado):
-    """Converte TODOS os insetos atuais (base e extras) para o novo formato de dia/noite, mantendo posições."""
     nova_lista = arcade.SpriteList()
     configs = obter_configs_estado(novo_estado)
     

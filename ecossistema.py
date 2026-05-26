@@ -99,9 +99,7 @@ class Ecossistema(arcade.Window):
             num_poses=NUM_POSES_MAX
         )
 
-
         self.flores: list[Flor] = []
-
 
         self.estado_insetos = "padrao"
 
@@ -283,28 +281,28 @@ class Ecossistema(arcade.Window):
             )
         )
 
-        while len(self.plantas) < novo_num_plantas:
+        plantas_ativas = [p for p in self.plantas if not p.a_desaparecer]
 
+        while len(plantas_ativas) < novo_num_plantas:
             nova_planta = criar_plantas(
                 self.altura,
                 self.largura,
                 self.estado_plantas,
                 1
             )[0]
+            self.plantas.append(nova_planta)
+            plantas_ativas.append(nova_planta)
 
-            self.plantas.append(
-                nova_planta
-            )
-
-        while len(self.plantas) > novo_num_plantas:
-
-            self.plantas.pop()
+        while len(plantas_ativas) > novo_num_plantas:
+            planta_a_remover = plantas_ativas.pop()
+            planta_a_remover.iniciar_desaparecimento()
 
         self._num_plantas_atual = novo_num_plantas
 
-
         for planta in self.plantas:
             planta.atualizar()
+            
+        self.plantas = [p for p in self.plantas if not p.removida]
 
 
         for inseto in self.insetos:
@@ -375,6 +373,9 @@ class Ecossistema(arcade.Window):
                 nova_planta.progresso_crescimento = (
                     planta_antiga.progresso_crescimento
                 )
+                
+                nova_planta.a_desaparecer = planta_antiga.a_desaparecer
+                nova_planta.folha_visivel = planta_antiga.folha_visivel
 
                 nova_planta.textura = (
                     nova_planta._renderizar_textura_planta(
