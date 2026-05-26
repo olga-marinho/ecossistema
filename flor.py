@@ -47,7 +47,11 @@ def _carregar_svg_com_cor(svg_path: str, cor_petala: str, largura_px: int = 300)
     )
 
 
-def _gerar_svg_caule(altura_caule, largura_janela, altura_janela, stroke_px):
+def _gerar_dados_caule(altura_caule, largura_janela, altura_janela, stroke_px):
+    """
+    Gera a estrutura e a geometria fixa do caule uma única vez, 
+    calculando também o comprimento total exato de toda a linha (incluindo curvas).
+    """
     largura_util = largura_janela * LARGURA_MAX_CAULE
     margin = stroke_px
     vb_w = largura_util + stroke_px * 2
@@ -83,57 +87,46 @@ def _gerar_svg_caule(altura_caule, largura_janela, altura_janela, stroke_px):
     path_d = f"M {x:.3f},{y:.3f}"
 
     direcao = random.choice([-1, 1])
+    comprimento_total = 0.0
 
     for i in range(num_us):
         seg_v = segs_v[i]
+        y_c1 = y + seg_v
+        path_d += f" V {y_c1:.3f}"
+        comprimento_total += seg_v  
+
+        if direcao > 0:
+            path_d += f" A {r:.3f},{r:.3f} 0 0,0 {(x + r):.3f},{(y_c1 + r):.3f}"
+        else:
+            path_d += f" A {r:.3f},{r:.3f} 0 0,1 {(x - r):.3f},{(y_c1 + r):.3f}"
+        comprimento_total += 0.5 * math.pi * r  
 
         if direcao > 0:
             x_h_fim = random.uniform(x_dir * 0.80, x_dir)
         else:
             x_h_fim = random.uniform(x_esq, x_esq + (x_dir - x_esq) * 0.20)
 
-        y_c1 = y + seg_v
-        path_d += f" V {y_c1:.3f}"
-
-        if direcao > 0:
-            path_d += f" A {r:.3f},{r:.3f} 0 0,0 {(x + r):.3f},{(y_c1 + r):.3f}"
-        else:
-            path_d += f" A {r:.3f},{r:.3f} 0 0,1 {(x - r):.3f},{(y_c1 + r):.3f}"
-
         x_h_antes = x_h_fim - r * direcao
         path_d += f" H {x_h_antes:.3f}"
+        x_apos_arco1 = x + r * direcao
+        comprimento_total += abs(x_h_antes - x_apos_arco1)  
 
         if direcao > 0:
             path_d += f" A {r:.3f},{r:.3f} 0 0,1 {x_h_fim:.3f},{(y_c1 + 2*r):.3f}"
         else:
             path_d += f" A {r:.3f},{r:.3f} 0 0,0 {x_h_fim:.3f},{(y_c1 + 2*r):.3f}"
+        comprimento_total += 0.5 * math.pi * r  
 
         x = x_h_fim
         y = y_c1 + 2 * r
         direcao *= -1
 
     path_d += f" V {y_base:.3f}"
+    comprimento_total += (y_base - y)  
 
     x_topo_norm = x_topo / vb_w
 
-    svg = f'''<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {vb_w:.3f} {vb_h:.3f}">
-  <defs>
-    <linearGradient id="grad" x1="0" y1="{y_base:.3f}" x2="0" y2="{y_topo:.3f}" gradientUnits="userSpaceOnUse">
-      <stop offset="0"    stop-color="{COR_CAULE_BASE}"/>
-      <stop offset="0.56" stop-color="{COR_CAULE_TOPO}"/>
-    </linearGradient>
-  </defs>
-  <path
-    d="{path_d}"
-    fill="none"
-    stroke="url(#grad)"
-    stroke-width="{stroke_px:.3f}"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  />
-</svg>'''
-    return svg.encode("utf-8"), x_topo_norm
+    return path_d, vb_w, vb_h, x_topo_norm, comprimento_total, y_base, y_topo
 
 
 class Flor:
@@ -148,9 +141,17 @@ class Flor:
             altura_janela * 0.25,
             altura_janela * 0.75,
         )
+        
+        self.progresso_crescimento = 0.0 
         self.stroke = largura_janela / 100
 
-        self.textura_caule, self.caule_x_offset = self._gerar_textura_caule()
+        (self.path_d, self.vb_w, self.vb_h, 
+         self.caule_x_offset, self.comprimento_total, 
+         self.y_base, self.y_topo) = _gerar_dados_caule(
+            self.altura_caule, self.largura_janela, self.altura_janela, self.stroke
+        )
+
+        self.textura_caule = self._renderizar_textura_caule(self.progresso_crescimento)
 
         self.textura_flor = None
         diretorio = os.path.dirname(os.path.abspath(__file__))
@@ -175,29 +176,60 @@ class Flor:
         else:
             print("Nenhum SVG encontrado em:", pasta)
 
-    def _gerar_textura_caule(self):
+    def _renderizar_textura_caule(self, progresso: float) -> arcade.Texture:
+        """Gera a imagem aplicando um offset negativo para esconder o ponto inicial do topo."""
         try:
-            svg_bytes, x_topo_norm = _gerar_svg_caule(
-                self.altura_caule,
-                self.largura_janela,
-                self.altura_janela,
-                self.stroke,
-            )
+            # O truque: criamos um traço contínuo e jogamos ele para fora com offset negativo. 
+            # À medida que cresce, a linha desliza de baixo para cima sem criar artefatos no topo!
+            dash_array_str = f'stroke-dasharray="{self.comprimento_total:.3f} {self.comprimento_total:.3f}"'
+            offset_val = -self.comprimento_total * (1.0 - progresso)
+            dash_offset_str = f'stroke-dashoffset="{offset_val:.3f}"'
+
+            svg = f'''<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {self.vb_w:.3f} {self.vb_h:.3f}">
+  <defs>
+    <linearGradient id="grad" x1="0" y1="{self.y_base:.3f}" x2="0" y2="{self.y_topo:.3f}" gradientUnits="userSpaceOnUse">
+      <stop offset="0"    stop-color="{COR_CAULE_BASE}"/>
+      <stop offset="0.56" stop-color="{COR_CAULE_TOPO}"/>
+    </linearGradient>
+  </defs>
+  <path
+    d="{self.path_d}"
+    fill="none"
+    stroke="url(#grad)"
+    stroke-width="{self.stroke:.3f}"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    {dash_array_str}
+    {dash_offset_str}
+  />
+</svg>'''
+            svg_bytes = svg.encode("utf-8")
             altura_px = int(self.altura_caule * 2)
             png_bytes = cairosvg.svg2png(bytestring=svg_bytes, output_height=altura_px)
             img = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
-            textura = arcade.Texture(
-                name=f"caule_{id(self)}_{random.random()}",
+            
+            return arcade.Texture(
+                name=f"caule_{id(self)}_{progresso:.3f}_{random.random()}",
                 image=img,
             )
-            return textura, x_topo_norm
         except Exception as e:
-            print(f"Erro ao gerar caule: {e}")
-            return None, 0.5
+            print(f"Erro ao renderizar textura do caule: {e}")
+            return None
 
     def atualizar(self, x_alvo: float):
         self.x_alvo = float(x_alvo)
         self.x += (self.x_alvo - self.x) * 0.12
+
+        # --- ANIMAÇÃO MAIS RÁPIDA ---
+        if self.progresso_crescimento < 1.0:
+            velocidade_desenho = 0.08  # Aumentado de 0.04 para 0.08 (Cresce bem rápido agora!)
+            self.progresso_crescimento += velocidade_desenho
+            
+            if self.progresso_crescimento >= 1.0:
+                self.progresso_crescimento = 1.0
+            
+            self.textura_caule = self._renderizar_textura_caule(self.progresso_crescimento)
 
     def desenhar(self, direcao_vento: float):
         angle_graus = -float(direcao_vento) * INCLINACAO_MAX_GRAUS
@@ -208,6 +240,7 @@ class Flor:
         if self.textura_caule:
             tc = self.textura_caule
             proporcao = tc.width / tc.height
+            
             alt_final = self.altura_caule
             larg_final = alt_final * proporcao
 
@@ -228,10 +261,12 @@ class Flor:
             sprite_c.angle = angle_graus
             arcade.draw_sprite(sprite_c)
 
+        # O topo onde a flor nasce só será alcançado visualmente quando o progresso for 1.0
         topo_x = self.x - self.altura_caule * sin_a
         topo_y = self.altura_caule * cos_a
 
-        if self.textura_flor:
+        # --- APARIÇÃO DA FLOR ---
+        if self.textura_flor and self.progresso_crescimento >= 1.0:
             proporcao = self.textura_flor.height / self.textura_flor.width
             larg_final = self.largura_janela * ESCALA_FLOR
             alt_final = larg_final * proporcao

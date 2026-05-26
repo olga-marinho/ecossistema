@@ -4,7 +4,7 @@ import random
 
 INCLINACAO_MAX_GRAUS = 18.0
 ESCALA_ALTURA = 0.20 
-QUANTIDADE_TUROS = 60  # Alterado para 60
+QUANTIDADE_TUROS = 60 
 
 class Relva:
     def __init__(self, largura_janela, altura_janela):
@@ -34,9 +34,6 @@ class Relva:
             
             sprite.center_x = (i * passo) + (passo / 2)
             
-            # Ajuste de alinhamento:
-            # center_y negativo baixa o sprite em relação ao limite inferior da janela
-            # -10 pixels (ajusta este valor conforme necessário)
             sprite.center_y = -10 
             
             sprite.properties = {"factor": random.uniform(0.8, 1.2)}
