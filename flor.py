@@ -16,7 +16,10 @@ COR_CAULE_TOPO = "#3cbe00"
 INCLINACAO_MAX_GRAUS = 22.0
 
 LARGURA_PETALA_PX = 300
-PASSOS_CRESCIMENTO_CAULE = 12
+PASSOS_CRESCIMENTO_CAULE = 8
+ESCALA_RENDER_CAULE = 0.7
+ALTURA_RENDER_CAULE_MIN_PX = 160
+ALTURA_RENDER_CAULE_MAX_PX = 900
 
 CORES_PETALA = [
     "#e74c3c",
@@ -228,6 +231,9 @@ class Flor:
         self.textura_caule = None
         self._atualizar_textura_caule()
 
+        self._sprite_caule = arcade.Sprite()
+        self._sprite_flor = arcade.Sprite()
+
         self.textura_flor = None
         self._svg_petala_path = None
         self._cor_petala_atual = None
@@ -345,7 +351,11 @@ class Flor:
   />
 </svg>'''
             svg_bytes = svg.encode("utf-8")
-            altura_px = int(self.altura_caule * 2)
+            altura_px = int(self.altura_caule * ESCALA_RENDER_CAULE)
+            altura_px = max(
+                ALTURA_RENDER_CAULE_MIN_PX,
+                min(ALTURA_RENDER_CAULE_MAX_PX, altura_px)
+            )
             png_bytes = cairosvg.svg2png(
                 bytestring=svg_bytes,
                 output_height=altura_px
@@ -406,8 +416,8 @@ class Flor:
             tc = self.textura_caule
 
             proporcao = tc.width / tc.height
-
             alt_final = self.altura_caule
+
             larg_final = alt_final * proporcao
 
             cx_base = self.x - (
@@ -425,7 +435,7 @@ class Flor:
             cx_rot = self.x + dx * cos_a - dy * sin_a
             cy_rot = dx * sin_a + dy * cos_a
 
-            sprite_c = arcade.Sprite()
+            sprite_c = self._sprite_caule
 
             sprite_c.texture = tc
             sprite_c.width = larg_final
@@ -456,7 +466,7 @@ class Flor:
 
             alt_final = larg_final * proporcao
 
-            sprite_f = arcade.Sprite()
+            sprite_f = self._sprite_flor
 
             sprite_f.texture = self.textura_flor
 

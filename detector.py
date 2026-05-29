@@ -150,13 +150,8 @@ class Detector:
             print("A descarregar modelo MediaPipe...")
             urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
 
-        base_options = python.BaseOptions(model_asset_path=MODEL_PATH)
-        options = vision.FaceDetectorOptions(
-            base_options=base_options,
-            running_mode=vision.RunningMode.VIDEO,
-            min_detection_confidence=MIN_DETECAO_CONFIANCA,
-        )
-        self._detector = vision.FaceDetector.create_from_options(options)
+        self._running_mode = vision.RunningMode.VIDEO
+        self._detector = self._criar_detector(self._running_mode)
         self._timestamp = 0
         self._ultimo_frame = None
         self._ultimas_amostras_cor = []
@@ -164,10 +159,38 @@ class Detector:
         self._cores_suavizadas_slots = []
         self._proximo_id = 0
         self._pessoas_rastreadas = []
+        self._falhas_detector = 0
+        self._detector_desativado = False
+        self._erro_detector_reportado = False
+        self._modo_fallback_ativado = False
 
         self.cap = cv2.VideoCapture(0)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+
+    def _criar_detector(self, running_mode):
+        base_options = python.BaseOptions(model_asset_path=MODEL_PATH)
+        options = vision.FaceDetectorOptions(
+            base_options=base_options,
+            running_mode=running_mode,
+            min_detection_confidence=MIN_DETECAO_CONFIANCA,
+        )
+        return vision.FaceDetector.create_from_options(options)
+
+    def _detetar_mediapipe(self, mp_image):
+        if self._running_mode == vision.RunningMode.VIDEO:
+            resultado = self._detector.detect_for_video(mp_image, self._timestamp)
+            self._timestamp += 33
+            return resultado
+
+        return self._detector.detect(mp_image)
+
+    def _ativar_fallback_image_mode(self):
+        self._running_mode = vision.RunningMode.IMAGE
+        self._detector = self._criar_detector(self._running_mode)
+        self._timestamp = 0
+        self._modo_fallback_ativado = True
+        print("[WARN] MediaPipe em modo IMAGE por compatibilidade neste PC.")
 
     def _mostrar_janela_debug(self, frame):
         if not self._mostrar_camera_debug:
@@ -188,6 +211,9 @@ class Detector:
         cv2.waitKey(1)
 
     def detetar(self):
+        if self._detector_desativado:
+            return []
+
         ret, frame = self.cap.read()
         if not ret:
             return []
@@ -198,8 +224,36 @@ class Detector:
 
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-        resultado = self._detector.detect_for_video(mp_image, self._timestamp)
-        self._timestamp += 33
+
+        try:
+            resultado = self._detetar_mediapipe(mp_image)
+            self._falhas_detector = 0
+            self._erro_detector_reportado = False
+        except RuntimeError as e:
+            self._falhas_detector += 1
+
+            if not self._erro_detector_reportado:
+                print(f"[WARN] Falha no detector MediaPipe: {e}")
+                self._erro_detector_reportado = True
+
+            if self._running_mode == vision.RunningMode.VIDEO and not self._modo_fallback_ativado:
+                try:
+                    self._ativar_fallback_image_mode()
+                    resultado = self._detetar_mediapipe(mp_image)
+                    self._falhas_detector = 0
+                    self._erro_detector_reportado = False
+                except Exception:
+                    return []
+            else:
+                if self._falhas_detector >= 30:
+                    self._detector_desativado = True
+                    print("[ERRO] Detector desativado por falhas repetidas neste PC.")
+                return []
+        except Exception as e:
+            if not self._erro_detector_reportado:
+                print(f"[WARN] Erro inesperado no detector: {e}")
+                self._erro_detector_reportado = True
+            return []
 
         deteccoes = []
         if resultado.detections:

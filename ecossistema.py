@@ -42,11 +42,54 @@ NOME_FONTE               = "Baste"
 MOSTRAR_CAMERA_DEBUG     = True
 TOLERANCIA_QUEDA_PESSOAS_FRAMES = 12
 
+
+def _env_int(nome: str, padrao: int) -> int:
+    try:
+        return int(os.getenv(nome, str(padrao)))
+    except (TypeError, ValueError):
+        return int(padrao)
+
+
+def _env_bool(nome: str, padrao: bool) -> bool:
+    valor = os.getenv(nome)
+
+    if valor is None:
+        return bool(padrao)
+
+    return valor.strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+        "sim",
+        "s",
+    }
+
+
 def _env_float(nome: str, padrao: float) -> float:
     try:
         return float(os.getenv(nome, str(padrao)))
     except (TypeError, ValueError):
         return float(padrao)
+
+
+_render_largura_raw = os.getenv("RENDER_INTERNO_LARGURA")
+_render_altura_raw = os.getenv("RENDER_INTERNO_ALTURA")
+
+RENDER_INTERNO_ATIVO = _env_bool(
+    "RENDER_INTERNO_ATIVO",
+    (_render_largura_raw is not None) or (_render_altura_raw is not None)
+)
+
+RENDER_INTERNO_LARGURA = max(
+    1,
+    _env_int("RENDER_INTERNO_LARGURA", 1440)
+)
+
+RENDER_INTERNO_ALTURA = max(
+    1,
+    _env_int("RENDER_INTERNO_ALTURA", 284)
+)
 
 
 T_FUNDO_S = max(
@@ -159,12 +202,68 @@ class Ecossistema(arcade.Window):
                 ecra.y + (altura_ecra - altura_janela) // 2
             )
 
-        self.largura = self.width
-        self.altura = self.height
+        self._largura_tela = self.width
+        self._altura_tela = self.height
+
+        if RENDER_INTERNO_ATIVO:
+            self.largura = RENDER_INTERNO_LARGURA
+            self.altura = RENDER_INTERNO_ALTURA
+        else:
+            self.largura = self._largura_tela
+            self.altura = self._altura_tela
+
+        self._escala_render_x = (
+            self._largura_tela / max(self.largura, 1)
+        )
+
+        self._escala_render_y = (
+            self._altura_tela / max(self.altura, 1)
+        )
+
+        # Compatibilidade entre versoes do Arcade.
+        if hasattr(arcade, "set_viewport"):
+            arcade.set_viewport(
+                0,
+                self.largura,
+                0,
+                self.altura
+            )
+        elif hasattr(self, "set_viewport"):
+            self.set_viewport(
+                0,
+                self.largura,
+                0,
+                self.altura
+            )
+        else:
+            self.ctx.projection_2d = (
+                0,
+                self.largura,
+                0,
+                self.altura
+            )
+
+        if RENDER_INTERNO_ATIVO:
+            print(
+                "[INFO] Render interno ativo: "
+                f"{self.largura}x{self.altura} "
+                f"-> ecrã {self._largura_tela}x{self._altura_tela}"
+            )
+
+        margem_referencia = max(
+            10,
+            int(min(self._largura_tela, self._altura_tela) * 0.012)
+        )
+
+        escala_visual = max(
+            1.0,
+            self._escala_render_x,
+            self._escala_render_y
+        )
 
         self.margem = max(
-            10,
-            int(min(self.largura, self.altura) * 0.012)
+            2,
+            int(margem_referencia / escala_visual)
         )
 
         self.tamanho_texto = self._calcular_tamanho_texto()
@@ -241,23 +340,37 @@ class Ecossistema(arcade.Window):
             self.largura - self.margem * 2
         )
 
-        tamanho = max(
-            200,
-            int(self.altura * 0.55)
-        )
+        if self._escala_render_y > 1.0:
+            tamanho_referencia = max(
+                90,
+                min(260, int(self._altura_tela * 0.22))
+            )
+
+            tamanho = max(
+                1,
+                int(tamanho_referencia / self._escala_render_y)
+            )
+        else:
+            tamanho = max(
+                90,
+                min(260, int(self.altura * 0.22))
+            )
 
         while tamanho > 1:
 
-            doc = arcade.Text(
-                FRASE,
-                x=0,
-                y=0,
-                font_size=tamanho,
-                font_name=NOME_FONTE,
-            )
+            try:
+                doc = arcade.Text(
+                    FRASE,
+                    x=0,
+                    y=0,
+                    font_size=tamanho,
+                    font_name=NOME_FONTE,
+                )
 
-            if doc.content_width <= largura_disponivel:
-                return tamanho
+                if doc.content_width <= largura_disponivel:
+                    return tamanho
+            except Exception:
+                pass
 
             tamanho -= 1
 
@@ -515,11 +628,7 @@ class Ecossistema(arcade.Window):
                 nova_planta.a_desaparecer = planta_antiga.a_desaparecer
                 nova_planta.folha_visivel = planta_antiga.folha_visivel
 
-                nova_planta.textura = (
-                    nova_planta._renderizar_textura_planta(
-                        nova_planta.progresso_crescimento
-                    )
-                )
+                nova_planta._atualizar_textura_planta()
 
                 novas_plantas.append(
                     nova_planta

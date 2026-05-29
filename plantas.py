@@ -24,6 +24,10 @@ ESCALA_FOLHA_VW = 0.02
 ESCALA_COGUMELO_VW = 0.04
 
 MARGEM_FOLHA_VW = 0.009
+PASSOS_CRESCIMENTO_PLANTA = 8
+ESCALA_RENDER_PLANTA = 0.7
+ALTURA_RENDER_PLANTA_MIN_PX = 160
+ALTURA_RENDER_PLANTA_MAX_PX = 900
 
 
 def _carregar_textura_folha(caminho: str, flip: bool):
@@ -170,7 +174,13 @@ class Planta:
             self.altura_caule, self.largura_janela, self.altura_janela, self.stroke
         )
 
-        self.textura = self._renderizar_textura_planta(self.progresso_crescimento)
+        self._cache_texturas_planta = {}
+        self._indice_textura_planta = -1
+        self.textura = None
+        self._atualizar_textura_planta()
+
+        self._sprite_caule = arcade.Sprite()
+        self._sprite_folha = arcade.Sprite()
         self.folha_esquerda = random.random() < 0.5
         self.textura_folha = self._carregar_folha()
         self.fator_vento = random.uniform(0.75, 1.25)
@@ -206,7 +216,11 @@ class Planta:
 </svg>'''
 
             svg_bytes = svg.encode("utf-8")
-            altura_px = int(self.altura_caule * 2)
+            altura_px = int(self.altura_caule * ESCALA_RENDER_PLANTA)
+            altura_px = max(
+                ALTURA_RENDER_PLANTA_MIN_PX,
+                min(ALTURA_RENDER_PLANTA_MAX_PX, altura_px)
+            )
 
             png_bytes = cairosvg.svg2png(
                 bytestring=svg_bytes,
@@ -216,7 +230,7 @@ class Planta:
             img = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
 
             textura = arcade.Texture(
-                name=f"planta_{id(self)}_{progresso:.3f}_{random.random()}",
+                name=f"planta_{id(self)}_{progresso:.3f}",
                 image=img,
             )
 
@@ -237,6 +251,33 @@ class Planta:
 
         return _carregar_textura_folha(caminho, flip=self.folha_esquerda)
 
+    def _indice_progresso_planta(self):
+        indice = int(round(self.progresso_crescimento * PASSOS_CRESCIMENTO_PLANTA))
+        return max(0, min(PASSOS_CRESCIMENTO_PLANTA, indice))
+
+    def _obter_textura_planta_por_indice(self, indice):
+        textura = self._cache_texturas_planta.get(indice)
+
+        if textura is not None:
+            return textura
+
+        progresso_discreto = indice / PASSOS_CRESCIMENTO_PLANTA
+        textura = self._renderizar_textura_planta(progresso_discreto)
+
+        if textura is not None:
+            self._cache_texturas_planta[indice] = textura
+
+        return textura
+
+    def _atualizar_textura_planta(self):
+        indice = self._indice_progresso_planta()
+
+        if indice == self._indice_textura_planta:
+            return
+
+        self._indice_textura_planta = indice
+        self.textura = self._obter_textura_planta_por_indice(indice)
+
     def atualizar(self):
         velocidade_desenho = 0.08  
         
@@ -245,8 +286,6 @@ class Planta:
                 self.progresso_crescimento += velocidade_desenho
                 if self.progresso_crescimento >= 1.0:
                     self.progresso_crescimento = 1.0
-                
-                self.textura = self._renderizar_textura_planta(self.progresso_crescimento)
         else:
             if self.folha_visivel:
                 self.folha_visivel = False
@@ -255,8 +294,8 @@ class Planta:
                 if self.progresso_crescimento <= 0.0:
                     self.progresso_crescimento = 0.0
                     self.removida = True
-                
-                self.textura = self._renderizar_textura_planta(self.progresso_crescimento)
+
+        self._atualizar_textura_planta()
 
 
     def desenhar(self, direcao_vento=0.0):
@@ -272,7 +311,7 @@ class Planta:
         caule_center_x = self.x - (self.x_offset - 0.5) * larg_final
         caule_center_y = (alt_final / 2) - (alt_final * 0.07)
 
-        sprite_c = arcade.Sprite()
+        sprite_c = self._sprite_caule
         sprite_c.texture = tc
         sprite_c.width = larg_final
         sprite_c.height = alt_final
@@ -297,7 +336,7 @@ class Planta:
             alt_folha = larg_folha * prop_folha
             margem_px = self.largura_janela * MARGEM_FOLHA_VW
 
-            sprite_f = arcade.Sprite()
+            sprite_f = self._sprite_folha
             sprite_f.texture = self.textura_folha
             sprite_f.width = larg_folha
             sprite_f.height = alt_folha
