@@ -173,6 +173,7 @@ class Planta:
         self.textura = self._renderizar_textura_planta(self.progresso_crescimento)
         self.folha_esquerda = random.random() < 0.5
         self.textura_folha = self._carregar_folha()
+        self.fator_vento = random.uniform(0.75, 1.25)
 
     def iniciar_desaparecimento(self):
         self.a_desaparecer = True
@@ -258,7 +259,7 @@ class Planta:
                 self.textura = self._renderizar_textura_planta(self.progresso_crescimento)
 
 
-    def desenhar(self):
+    def desenhar(self, direcao_vento=0.0):
         if not self.textura:
             return
 
@@ -277,11 +278,13 @@ class Planta:
         sprite_c.height = alt_final
         sprite_c.center_x = caule_center_x
         sprite_c.center_y = caule_center_y
+        sprite_c.center_x += float(direcao_vento) * self.largura_janela * 0.0025 * self.fator_vento
+        sprite_c.angle = -float(direcao_vento) * 12.0 * self.fator_vento
 
         arcade.draw_sprite(sprite_c)
 
         if self.textura_folha and self.progresso_crescimento >= 1.0 and self.folha_visivel:
-            topo_x = self.x
+            topo_x = self.x + float(direcao_vento) * self.largura_janela * 0.006 * self.fator_vento
             topo_y = self.altura_caule
 
             if self.estado == "noturno":

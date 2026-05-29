@@ -6,3 +6,4 @@ pyserial>=3.5
 cairosvg>=2.7
 lxml>=5.0
 pillow>=10.0
+paho-mqtt>=2.1

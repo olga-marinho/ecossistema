@@ -18,20 +18,62 @@ from relva import Relva
 
 
 PROPORCAO_ORIGINAL       = 1440 / 284
+LARGURA_BASE_JANELA      = 1200
+ESCALA_LARGURA_ECRA      = 0.42
+LARGURA_MIN_JANELA       = 640
 NUM_POSES_MAX            = 5
-PORTA_ARDUINO            = "COM9"
+FULLSCREEN_ALVO_LARGURA  = 9720
+FULLSCREEN_ALVO_ALTURA   = 1920
+
+MODO_COMUNICACAO         = os.getenv("MODO_COMUNICACAO", "mqtt").lower()
+PORTA_ESP32              = os.getenv("PORTA_ESP32", "COM10")
+PORTA_ANEMOMETRO         = os.getenv("PORTA_ANEMOMETRO", "COM9")
+MQTT_BROKER              = os.getenv("MQTT_BROKER", "broker.emqx.io")
+MQTT_PORTA               = int(os.getenv("MQTT_PORTA", "1883"))
+MQTT_USER                = os.getenv("MQTT_USER", "")
+MQTT_PASSWORD            = os.getenv("MQTT_PASSWORD", "")
+MQTT_TOPIC_BASE          = os.getenv("MQTT_TOPIC_BASE", "ecossistema")
+
 LIMITE_NOTURNO           = 0.5
-FRAMES_ENTRE_ENVIOS_COR  = 3
 FRASE                    = "SOMOS TODOS PARTE DO ECOSSISTEMA!"
 VENTO_SIMULADO_TECLA     = 1.0
-NOME_FONTE               = "Baste A Medium"
+NOME_FONTE               = "Baste"
+
+MOSTRAR_CAMERA_DEBUG     = True
+TOLERANCIA_QUEDA_PESSOAS_FRAMES = 12
+
+def _env_float(nome: str, padrao: float) -> float:
+    try:
+        return float(os.getenv(nome, str(padrao)))
+    except (TypeError, ValueError):
+        return float(padrao)
+
+
+T_FUNDO_S = max(
+    0.1,
+    _env_float(
+        "T_FUNDO_S",
+        _env_float("INTERVALO_ATUALIZACAO_FUNDO_SEGUNDOS", 10.0)
+    )
+)
+
+T_LED_S = max(
+    0.1,
+    _env_float(
+        "T_LED_S",
+        _env_float("INTERVALO_ENVIO_LED_SEGUNDOS", 10.0)
+    )
+)
+
+SUAV_FUNDO = max(0.0, min(1.0, _env_float("SUAV_FUNDO", 0.12)))
+SUAV_LED = max(0.0, min(1.0, _env_float("SUAV_LED", 0.35)))
 
 
 def lerp(a: float, b: float, t: float) -> float:
     return a + (b - a) * t
 
 
-def _obter_ecra_maior() -> tuple[int, int, int, int]:
+def _obter_ecra_maior():
     display = pyglet.display.get_display()
     screens = display.get_screens()
 
@@ -40,7 +82,28 @@ def _obter_ecra_maior() -> tuple[int, int, int, int]:
     print(f"[INFO] Ecrãs disponíveis: {[(s.width, s.height) for s in screens]}")
     print(f"[INFO] Ecrã escolhido: {melhor.width}x{melhor.height} em ({melhor.x},{melhor.y})")
 
-    return melhor.width, melhor.height, melhor.x, melhor.y
+    return melhor
+
+
+def _calcular_dimensoes_janela(
+    largura_ecra: int,
+    altura_ecra: int
+) -> tuple[int, int]:
+    if ESCALA_LARGURA_ECRA is None:
+        largura_janela = LARGURA_BASE_JANELA
+    else:
+        largura_janela = int(largura_ecra * ESCALA_LARGURA_ECRA)
+
+    largura_janela = max(LARGURA_MIN_JANELA, largura_janela)
+    largura_janela = min(largura_janela, largura_ecra)
+
+    altura_janela = int(largura_janela / PROPORCAO_ORIGINAL)
+
+    if altura_janela > altura_ecra:
+        altura_janela = altura_ecra
+        largura_janela = int(altura_janela * PROPORCAO_ORIGINAL)
+
+    return largura_janela, altura_janela
 
 
 class Ecossistema(arcade.Window):
@@ -59,44 +122,67 @@ class Ecossistema(arcade.Window):
         if os.path.exists(font_path):
             pyglet_font.add_file(font_path)
 
-        largura_ecra, altura_ecra, ecra_x, ecra_y = _obter_ecra_maior()
+        ecra = _obter_ecra_maior()
+        largura_ecra = ecra.width
+        altura_ecra = ecra.height
 
-        altura_proporcional = int(
-            largura_ecra / PROPORCAO_ORIGINAL
+        usar_fullscreen_alvo = (
+            largura_ecra == FULLSCREEN_ALVO_LARGURA
+            and altura_ecra == FULLSCREEN_ALVO_ALTURA
         )
 
-        if altura_proporcional <= altura_ecra:
-
+        if usar_fullscreen_alvo:
             super().__init__(
                 largura_ecra,
-                altura_proporcional,
+                altura_ecra,
+                FRASE,
+                resizable=False,
+                fullscreen=True,
+                screen=ecra,
+            )
+        else:
+            largura_janela, altura_janela = _calcular_dimensoes_janela(
+                largura_ecra,
+                altura_ecra
+            )
+
+            super().__init__(
+                largura_janela,
+                altura_janela,
                 FRASE,
                 resizable=False,
                 style=pyglet.window.Window.WINDOW_STYLE_BORDERLESS,
             )
 
-            self.set_location(ecra_x, ecra_y)
-
-        else:
-
-            super().__init__(
-                largura_ecra,
-                altura_ecra,
-                FRASE,
-                fullscreen=True
+            self.set_location(
+                ecra.x + (largura_ecra - largura_janela) // 2,
+                ecra.y + (altura_ecra - altura_janela) // 2
             )
 
         self.largura = self.width
         self.altura = self.height
 
-        self.margem = 10
+        self.margem = max(
+            10,
+            int(min(self.largura, self.altura) * 0.012)
+        )
 
         self.tamanho_texto = self._calcular_tamanho_texto()
 
-        self.vento = Vento(porta=PORTA_ARDUINO)
+        self.vento = Vento(
+            porta_esp32=PORTA_ESP32,
+            porta_anemometro=PORTA_ANEMOMETRO,
+            modo_comunicacao=MODO_COMUNICACAO,
+            mqtt_host=MQTT_BROKER,
+            mqtt_port=MQTT_PORTA,
+            mqtt_username=MQTT_USER,
+            mqtt_password=MQTT_PASSWORD,
+            mqtt_topic_base=MQTT_TOPIC_BASE
+        )
 
         self.detector = Detector(
-            num_poses=NUM_POSES_MAX
+            num_poses=NUM_POSES_MAX,
+            mostrar_camera_debug=MOSTRAR_CAMERA_DEBUG
         )
 
         self.flores: list[Flor] = []
@@ -110,6 +196,11 @@ class Ecossistema(arcade.Window):
         )
 
         self.insetos_extras_ativos = []
+
+        self._indice_config_inseto_por_estado = {
+            "padrao": 0,
+            "noturno": 0,
+        }
 
         self.estado_plantas = "padrao"
 
@@ -127,9 +218,22 @@ class Ecossistema(arcade.Window):
             self.altura
         )
 
-        self._frame_cor = 0
+        self._claridade_alvo = self._claridade()
+        self._claridade_atual = self._claridade_alvo
+        self._t_fundo = T_FUNDO_S
+        self._t_led = T_LED_S
+        self._cor_led = None
+        self._num_pessoas_alvo = 0
+        self._frames_queda_pessoas = 0
 
+        self._ler_arduino = True
         self._vento_simulado = 0.0
+
+    def _flores_ativas(self):
+        return [
+            f for f in self.flores
+            if not f.a_desaparecer
+        ]
 
     def _calcular_tamanho_texto(self) -> int:
 
@@ -137,7 +241,10 @@ class Ecossistema(arcade.Window):
             self.largura - self.margem * 2
         )
 
-        tamanho = 400
+        tamanho = max(
+            200,
+            int(self.altura * 0.55)
+        )
 
         while tamanho > 1:
 
@@ -178,108 +285,126 @@ class Ecossistema(arcade.Window):
 
     def on_update(self, delta_time):
 
-        self.vento.atualizar(delta_time)
+        self.vento.atualizar(
+            delta_time,
+            ler_arduino=self._ler_arduino
+        )
+
+        direcao_vento = (
+            self._vento_simulado
+            if self._vento_simulado
+            else self.vento.direcao
+        )
 
         pessoas = sorted(
             self.detector.detetar(),
             key=lambda p: p.x
         )
+        pessoas_por_id = {p.id: p for p in pessoas}
 
-        while len(
-            [f for f in self.flores if not f.a_desaparecer]
-        ) < len(pessoas):
+        flores_ativas = [f for f in self.flores if not f.a_desaparecer]
 
-            p = pessoas[
-                len([f for f in self.flores if not f.a_desaparecer])
-            ]
+        for flor in flores_ativas:
+            p_id = getattr(flor, "pessoa_id", None)
 
-            nova_flor = Flor(
-                p.x * self.largura,
-                self.altura,
-                self.largura,
-                cor_rgb=p.cor
-            )
+            if p_id is None:
+                par_ids = getattr(flor, "par_ids", None)
+                if isinstance(par_ids, tuple) and len(par_ids) == 1:
+                    p_id = par_ids[0]
+                    flor.pessoa_id = p_id
 
-            self.flores.append(nova_flor)
+            pessoa = pessoas_por_id.get(p_id)
 
-            configs = obter_configs_estado(
-                self.estado_insetos
-            )
+            if pessoa is not None:
+                flor.atualizar(pessoa.x * self.largura)
 
-            item = random.choice(configs)
+                if pessoa.cor is not None:
+                    flor.atualizar_cor(pessoa.cor)
+            else:
+                flor.iniciar_desaparecimento()
 
-            novo_inseto = gerar_inseto_por_config(
-                item,
-                self.altura,
-                self.largura
-            )
-
-            novo_inseto.is_extra_ativo = True
-
-            self.insetos.append(novo_inseto)
-
-            self.insetos_extras_ativos.append(
-                novo_inseto
-            )
-
-        while len(
-            [f for f in self.flores if not f.a_desaparecer]
-        ) > len(pessoas):
-
-            flor_a_remover = None
-
-            for flor in reversed(self.flores):
-
-                if not flor.a_desaparecer:
-                    flor_a_remover = flor
-                    break
-
-            if flor_a_remover:
-                flor_a_remover.iniciar_desaparecimento()
-
-            if self.insetos_extras_ativos:
-
-                inseto_a_remover = (
-                    self.insetos_extras_ativos.pop()
-                )
-
-                inseto_a_remover.marcado_para_sair = True
-
-                inseto_a_remover.is_extra_ativo = False
-
-            break
-
-        flores_ativas = [
-            f for f in self.flores
+        ids_com_flor = {
+            getattr(f, "pessoa_id", None)
+            for f in flores_ativas
             if not f.a_desaparecer
-        ]
+        }
 
-        for flor, p in zip(flores_ativas, pessoas):
+        for pessoa in pessoas:
+            if pessoa.id not in ids_com_flor:
+                nova_flor = Flor(
+                    pessoa.x * self.largura,
+                    self.altura,
+                    self.largura,
+                    cor_rgb=pessoa.cor
+                )
+                nova_flor.pessoa_id = pessoa.id
+                self.flores.append(nova_flor)
 
-            flor.atualizar(
-                p.x * self.largura
-            )
+        ids_com_inseto = {
+            getattr(i, "pessoa_id", None)
+            for i in self.insetos_extras_ativos
+        }
+
+        for pessoa in pessoas:
+            if pessoa.id not in ids_com_inseto:
+
+                configs = obter_configs_estado(self.estado_insetos)
+                idx_estado = self._indice_config_inseto_por_estado.get(self.estado_insetos, 0)
+                item = configs[idx_estado % len(configs)]
+                self._indice_config_inseto_por_estado[self.estado_insetos] = idx_estado + 1
+
+                novo_inseto = gerar_inseto_por_config(item, self.altura, self.largura)
+                novo_inseto.is_extra_ativo = True
+                novo_inseto.pessoa_id = pessoa.id
+                self.insetos.append(novo_inseto)
+                self.insetos_extras_ativos.append(novo_inseto)
+                ids_com_inseto.add(pessoa.id)
 
         for flor in self.flores:
-
             if flor.a_desaparecer:
-
                 flor.atualizar(flor.x)
 
-        self.flores = [
-            flor for flor in self.flores
-            if not flor.removida
-        ]
+        self.flores = [f for f in self.flores if not f.removida]
 
+        dist_min = self.largura * 0.0625
+        for _ in range(3):
+            ativas = [f for f in self.flores if not f.a_desaparecer]
+            for i in range(len(ativas)):
+                for j in range(i + 1, len(ativas)):
+                    f1 = ativas[i]
+                    f2 = ativas[j]
+                    dx = f2.x - f1.x
+                    if abs(dx) < dist_min:
+                        if dx == 0:
+                            dx = 0.1
+                        sobreposicao = dist_min - abs(dx)
+                        direcao = 1.0 if dx > 0 else -1.0
+                        f1.x -= (sobreposicao / 2.0) * direcao
+                        f2.x += (sobreposicao / 2.0) * direcao
 
-        novo_num_plantas = (
-            2 + (
-                len([
-                    f for f in self.flores
-                    if not f.a_desaparecer
-                ]) // 2
-            )
-        )
+        margem_tela = dist_min / 2
+        for f in self.flores:
+            if f.x < margem_tela:
+                f.x = margem_tela
+                if f.x_alvo < margem_tela:
+                    f.x_alvo = margem_tela
+            elif f.x > self.largura - margem_tela:
+                f.x = self.largura - margem_tela
+                if f.x_alvo > self.largura - margem_tela:
+                    f.x_alvo = self.largura - margem_tela
+
+        ids_pessoas_ativas = {p.id for p in pessoas}
+        insetos_ativos = []
+        for inseto in self.insetos_extras_ativos:
+            ins_id = getattr(inseto, "pessoa_id", None)
+            if ins_id is not None and ins_id not in ids_pessoas_ativas:
+                inseto.marcado_para_sair = True
+                inseto.is_extra_ativo = False
+            else:
+                insetos_ativos.append(inseto)
+        self.insetos_extras_ativos = insetos_ativos
+
+        novo_num_plantas = 2 + (len(ids_pessoas_ativas) // 2)
 
         plantas_ativas = [p for p in self.plantas if not p.a_desaparecer]
 
@@ -304,33 +429,46 @@ class Ecossistema(arcade.Window):
             
         self.plantas = [p for p in self.plantas if not p.removida]
 
-
         for inseto in self.insetos:
-            inseto.update()
+            inseto.update(direcao_vento)
 
+        self._t_fundo += delta_time
+        if self._t_fundo >= T_FUNDO_S:
+            self._t_fundo = 0.0
+            self._claridade_alvo = self._claridade()
 
-        self._frame_cor += 1
+        self._claridade_atual = lerp(
+            self._claridade_atual,
+            self._claridade_alvo,
+            SUAV_FUNDO
+        )
+
+        self._t_led += delta_time
 
         if (
-            self._frame_cor % FRAMES_ENTRE_ENVIOS_COR == 0
+            self._t_led >= T_LED_S
             and self.vento.conectado
+            and self._ler_arduino
         ):
+            self._t_led = 0.0
 
             cor = self.detector.cor_dos_torsos()
 
             if cor is not None:
 
-                r, g, b = cor
+                if self._cor_led is None:
+                    self._cor_led = cor
+                else:
+                    self._cor_led = tuple(
+                        int(lerp(self._cor_led[i], cor[i], SUAV_LED))
+                        for i in range(3)
+                    )
 
-                self.vento.enviar_cor(
-                    r,
-                    g,
-                    b
-                )
+                self.vento.enviar_cor(*self._cor_led)
 
     def on_draw(self):
 
-        t = self._claridade()
+        t = self._claridade_atual
 
         novo_estado = (
             "noturno"
@@ -424,7 +562,7 @@ class Ecossistema(arcade.Window):
 
 
         for planta in self.plantas:
-            planta.desenhar()
+            planta.desenhar(direcao_vento)
 
         for flor in self.flores:
             flor.desenhar(direcao_vento)
@@ -440,6 +578,13 @@ class Ecossistema(arcade.Window):
 
         if symbol == arcade.key.K:
 
+            self._ler_arduino = not self._ler_arduino
+
+            estado = "ligada" if self._ler_arduino else "desligada"
+            print(f"[INFO] Comunicacao Arduino {estado}")
+
+        elif symbol == arcade.key.V:
+
             self._vento_simulado = (
                 VENTO_SIMULADO_TECLA
             )
@@ -450,13 +595,14 @@ class Ecossistema(arcade.Window):
 
     def on_key_release(self, symbol, modifiers):
 
-        if symbol == arcade.key.K:
+        if symbol == arcade.key.V:
 
             self._vento_simulado = 0.0
 
     def on_close(self):
 
         self.detector.fechar()
+        self.vento.fechar()
 
         super().on_close()
 

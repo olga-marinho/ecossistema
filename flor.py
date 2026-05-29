@@ -15,6 +15,9 @@ COR_CAULE_BASE = "#006633"
 COR_CAULE_TOPO = "#3cbe00"
 INCLINACAO_MAX_GRAUS = 22.0
 
+LARGURA_PETALA_PX = 300
+PASSOS_CRESCIMENTO_CAULE = 12
+
 CORES_PETALA = [
     "#e74c3c",
     "#e67e22",
@@ -26,25 +29,82 @@ CORES_PETALA = [
 ]
 
 
-def _carregar_svg_com_cor(svg_path: str, cor_petala: str, largura_px: int = 300) -> arcade.Texture:
-    tree = ET.parse(svg_path)
+_CACHE_TEXTURA_PETALA = {}
+
+
+def _clamp_rgb(cor_rgb):
+    return (
+        max(0, min(255, int(cor_rgb[0]))),
+        max(0, min(255, int(cor_rgb[1]))),
+        max(0, min(255, int(cor_rgb[2]))),
+    )
+
+
+def _hex_para_rgb(hex_color):
+    hex_color = hex_color.lstrip("#")
+    return tuple(int(hex_color[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def _rgb_para_hex(cor_rgb):
+    r, g, b = _clamp_rgb(cor_rgb)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def _listar_svgs_flor(pasta):
+    caminhos = []
+
+    for i in range(1, 8):
+        caminho_svg = os.path.join(pasta, f"flor_0{i}.svg")
+        if os.path.exists(caminho_svg):
+            caminhos.append(caminho_svg)
+
+    return caminhos
+
+
+def _obter_textura_petala_colorida(caminho_svg, cor_rgb):
+    cor_hex = _rgb_para_hex(cor_rgb)
+    chave = (caminho_svg, cor_hex)
+
+    textura = _CACHE_TEXTURA_PETALA.get(chave)
+
+    if textura is not None:
+        return textura
+
+    tree = ET.parse(caminho_svg)
     root = tree.getroot()
+
     for style_el in root.iter("{http://www.w3.org/2000/svg}style"):
         texto = style_el.text
+
         if texto:
             texto = re.sub(
-                r'(\.cls-1\s*\{[^}]*fill:\s*)([^;]+)(;)',
-                rf'\g<1>{cor_petala}\g<3>',
+                r"(\.cls-1\s*\{[^}]*fill:\s*)([^;]+)(;)",
+                rf"\g<1>{cor_hex}\g<3>",
                 texto
             )
             style_el.text = texto
-    svg_bytes = ET.tostring(root, xml_declaration=True, encoding="UTF-8")
-    png_bytes = cairosvg.svg2png(bytestring=svg_bytes, output_width=largura_px)
+
+    svg_bytes = ET.tostring(
+        root,
+        xml_declaration=True,
+        encoding="UTF-8"
+    )
+
+    png_bytes = cairosvg.svg2png(
+        bytestring=svg_bytes,
+        output_width=LARGURA_PETALA_PX
+    )
+
     img = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
-    return arcade.Texture(
-        name=f"{svg_path}_{cor_petala}_{random.random()}",
+
+    textura = arcade.Texture(
+        name=f"petala_{os.path.basename(caminho_svg)}_{cor_hex}",
         image=img
     )
+
+    _CACHE_TEXTURA_PETALA[chave] = textura
+
+    return textura
 
 
 def _gerar_dados_caule(altura_caule, largura_janela, altura_janela, stroke_px):
@@ -163,11 +223,14 @@ class Flor:
             self.stroke
         )
 
-        self.textura_caule = self._renderizar_textura_caule(
-            self.progresso_crescimento
-        )
+        self._cache_texturas_caule = {}
+        self._indice_textura_caule = -1
+        self.textura_caule = None
+        self._atualizar_textura_caule()
 
         self.textura_flor = None
+        self._svg_petala_path = None
+        self._cor_petala_atual = None
 
         diretorio = os.path.dirname(os.path.abspath(__file__))
 
@@ -177,34 +240,73 @@ class Flor:
             "imgs"
         )
 
-        svgs = [
-            os.path.join(pasta, f"flor_0{i}.svg")
-            for i in range(1, 8)
-            if os.path.exists(os.path.join(pasta, f"flor_0{i}.svg"))
-        ]
+        svgs = _listar_svgs_flor(pasta)
 
         if svgs:
 
-            svg_path = random.choice(svgs)
+            self._svg_petala_path = random.choice(svgs)
 
             if cor_rgb is not None:
-                cor = "#{:02x}{:02x}{:02x}".format(*cor_rgb)
+                cor = _clamp_rgb(cor_rgb)
             else:
-                cor = random.choice(CORES_PETALA)
-
-            try:
-                self.textura_flor = _carregar_svg_com_cor(
-                    svg_path,
-                    cor,
-                    largura_px=300
+                cor = _hex_para_rgb(
+                    random.choice(CORES_PETALA)
                 )
 
-            except Exception as e:
-                print(f"Erro ao carregar SVG '{svg_path}': {e}")
+            self.atualizar_cor(cor)
 
 
     def iniciar_desaparecimento(self):
         self.a_desaparecer = True
+
+
+    def atualizar_cor(self, cor_rgb):
+        if self._svg_petala_path is None or cor_rgb is None:
+            return
+
+        cor_clamp = _clamp_rgb(cor_rgb)
+
+        if self._cor_petala_atual == cor_clamp:
+            return
+
+        try:
+            self.textura_flor = _obter_textura_petala_colorida(
+                self._svg_petala_path,
+                cor_clamp
+            )
+            self._cor_petala_atual = cor_clamp
+        except Exception as e:
+            print(f"Erro ao atualizar cor da petala '{self._svg_petala_path}': {e}")
+
+
+    def _indice_progresso_caule(self):
+        indice = int(round(self.progresso_crescimento * PASSOS_CRESCIMENTO_CAULE))
+        return max(0, min(PASSOS_CRESCIMENTO_CAULE, indice))
+
+
+    def _obter_textura_caule_por_indice(self, indice):
+        textura = self._cache_texturas_caule.get(indice)
+
+        if textura is not None:
+            return textura
+
+        progresso_discreto = indice / PASSOS_CRESCIMENTO_CAULE
+        textura = self._renderizar_textura_caule(progresso_discreto)
+
+        if textura is not None:
+            self._cache_texturas_caule[indice] = textura
+
+        return textura
+
+
+    def _atualizar_textura_caule(self):
+        indice = self._indice_progresso_caule()
+
+        if indice == self._indice_textura_caule:
+            return
+
+        self._indice_textura_caule = indice
+        self.textura_caule = self._obter_textura_caule_por_indice(indice)
 
 
     def _renderizar_textura_caule(self, progresso: float) -> arcade.Texture:
@@ -242,20 +344,15 @@ class Flor:
     {dash_offset_str}
   />
 </svg>'''
-
             svg_bytes = svg.encode("utf-8")
-
             altura_px = int(self.altura_caule * 2)
-
             png_bytes = cairosvg.svg2png(
                 bytestring=svg_bytes,
                 output_height=altura_px
             )
-
             img = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
-
             return arcade.Texture(
-                name=f"caule_{id(self)}_{progresso:.3f}_{random.random()}",
+                name=f"caule_{id(self)}_{progresso:.3f}",
                 image=img,
             )
 
@@ -280,10 +377,6 @@ class Flor:
                 if self.progresso_crescimento >= 1.0:
                     self.progresso_crescimento = 1.0
 
-                self.textura_caule = self._renderizar_textura_caule(
-                    self.progresso_crescimento
-                )
-
         else:
 
             if self.flor_visivel:
@@ -297,9 +390,7 @@ class Flor:
                     self.progresso_crescimento = 0.0
                     self.removida = True
 
-                self.textura_caule = self._renderizar_textura_caule(
-                    self.progresso_crescimento
-                )
+        self._atualizar_textura_caule()
 
     def desenhar(self, direcao_vento: float):
 
