@@ -155,6 +155,12 @@ class Inseto(arcade.Sprite):
 
 class InsetoTerrestre(Inseto):
     def _definir_velocidade(self):
+        # ALTERAÇÃO 1: Definir uma velocidade específica e condizente para a minhoca
+        if "minhoca" in self.prefixo:
+            # Sendo um animal rastejante, uma velocidade menor (0.3 a 0.6) fica mais natural
+            return (self.largura_janela / 1440) * random.uniform(0.3, 0.6)
+        
+        # Velocidade padrão para os outros terrestres (formiga, caracol)
         return (self.largura_janela / 1440) * random.uniform(0.8, 1.5)
 
     def _posicionar_y(self, _):
@@ -211,15 +217,27 @@ def obter_configs_estado(estado):
             {"prefixo": "inseto_joaninha",  "frames": 4},
         ]
 
-def gerar_inseto_por_config(item, altura, largura, dados=None, marcado_para_sair=False):
+def gerar_insecto_por_config(item, altura, largura, dados=None, marcado_para_sair=False):
+    # Nota: Mantive o nome original da sua assinatura (gerar_inseto_por_config)
     prefixo = item["prefixo"]
     escala_vw = ESCALA_VW.get(prefixo, 0.02)
     e_terrestre = any(t in prefixo.lower() for t in TERRESTRES)
     classe = InsetoTerrestre if e_terrestre else InsetoVoador
     
+    # ALTERAÇÃO 2: Correção do Bug de Transição "Voador -> Terrestre"
+    if dados and "velocidade" in dados:
+        era_voador = dados.get("angulo") is not None
+        sera_voador = not e_terrestre
+        # Se mudou de categoria (ex: Voador virou Terrestre), força o recálculo da velocidade ideal
+        if era_voador != sera_voador:
+            dados["velocidade"] = None
+
     ins = classe(prefixo, item["frames"], altura, largura, escala_vw, dados)
     ins.marcado_para_sair = marcado_para_sair
     return ins
+
+# Compatibilidade caso o resto do código chame com o nome do seu script
+gerar_inseto_por_config = gerar_insecto_por_config
 
 def carregar_insetos_iniciais(altura, largura, estado):
     lista = arcade.SpriteList()

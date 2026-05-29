@@ -35,9 +35,7 @@ MQTT_PASSWORD            = os.getenv("MQTT_PASSWORD", "")
 MQTT_TOPIC_BASE          = os.getenv("MQTT_TOPIC_BASE", "ecossistema")
 
 LIMITE_NOTURNO           = 0.5
-FRASE                    = "SOMOS TODOS PARTE DO ECOSSISTEMA!"
 VENTO_SIMULADO_TECLA     = 1.0
-NOME_FONTE               = "Baste"
 
 MOSTRAR_CAMERA_DEBUG     = True
 TOLERANCIA_QUEDA_PESSOAS_FRAMES = 12
@@ -155,16 +153,6 @@ class Ecossistema(arcade.Window):
 
         diretorio = os.path.dirname(os.path.abspath(__file__))
 
-        font_path = os.path.join(
-            diretorio,
-            "assets",
-            "font",
-            "BasteA-Medium.otf"
-        )
-
-        if os.path.exists(font_path):
-            pyglet_font.add_file(font_path)
-
         ecra = _obter_ecra_maior()
         largura_ecra = ecra.width
         altura_ecra = ecra.height
@@ -178,7 +166,7 @@ class Ecossistema(arcade.Window):
             super().__init__(
                 largura_ecra,
                 altura_ecra,
-                FRASE,
+                "",
                 resizable=False,
                 fullscreen=True,
                 screen=ecra,
@@ -192,7 +180,7 @@ class Ecossistema(arcade.Window):
             super().__init__(
                 largura_janela,
                 altura_janela,
-                FRASE,
+                "",
                 resizable=False,
                 style=pyglet.window.Window.WINDOW_STYLE_BORDERLESS,
             )
@@ -266,7 +254,30 @@ class Ecossistema(arcade.Window):
             int(margem_referencia / escala_visual)
         )
 
-        self.tamanho_texto = self._calcular_tamanho_texto()
+        # --- Carregar imagem da frase ---
+        frase_path = os.path.join(diretorio, "assets", "imgs", "frase.png")
+        self._frase_textura = arcade.load_texture(frase_path)
+
+        # Largura disponível (com margens) e altura proporcional
+        largura_frase = self.largura - self.margem * 2
+        proporcao_frase = (
+            self._frase_textura.height / max(self._frase_textura.width, 1)
+        )
+        altura_frase = int(largura_frase * proporcao_frase)
+
+        # Sprite posicionado no topo (alinhado como o texto estava)
+        self._frase_sprite = arcade.Sprite()
+        self._frase_sprite.texture = self._frase_textura
+        self._frase_sprite.width = largura_frase
+        self._frase_sprite.height = altura_frase
+        # Centro x: margem + metade da largura disponível
+        self._frase_sprite.center_x = self.margem + largura_frase / 2
+        # Centro y: topo minus margem minus metade da altura (equivale ao posicionamento do arcade.Text)
+        self._frase_sprite.center_y = (
+            self.altura - self.margem - altura_frase / 2
+        )
+        self._frase_lista = arcade.SpriteList()
+        self._frase_lista.append(self._frase_sprite)
 
         self.vento = Vento(
             porta_esp32=PORTA_ESP32,
@@ -333,48 +344,6 @@ class Ecossistema(arcade.Window):
             f for f in self.flores
             if not f.a_desaparecer
         ]
-
-    def _calcular_tamanho_texto(self) -> int:
-
-        largura_disponivel = (
-            self.largura - self.margem * 2
-        )
-
-        if self._escala_render_y > 1.0:
-            tamanho_referencia = max(
-                90,
-                min(260, int(self._altura_tela * 0.22))
-            )
-
-            tamanho = max(
-                1,
-                int(tamanho_referencia / self._escala_render_y)
-            )
-        else:
-            tamanho = max(
-                90,
-                min(260, int(self.altura * 0.22))
-            )
-
-        while tamanho > 1:
-
-            try:
-                doc = arcade.Text(
-                    FRASE,
-                    x=0,
-                    y=0,
-                    font_size=tamanho,
-                    font_name=NOME_FONTE,
-                )
-
-                if doc.content_width <= largura_disponivel:
-                    return tamanho
-            except Exception:
-                pass
-
-            tamanho -= 1
-
-        return 1
 
     def _claridade(self) -> float:
 
@@ -648,20 +617,7 @@ class Ecossistema(arcade.Window):
 
         self.clear((r, g, b))
 
-        arcade.Text(
-            FRASE,
-            self.margem,
-            self.altura
-            - self.margem
-            - self.tamanho_texto,
-            arcade.color.Color(
-                0x3C,
-                0xBE,
-                0x00
-            ),
-            self.tamanho_texto,
-            font_name=NOME_FONTE,
-        ).draw()
+        self._frase_lista.draw()
 
         direcao_vento = (
             self._vento_simulado
